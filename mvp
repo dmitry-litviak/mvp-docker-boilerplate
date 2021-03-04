@@ -1,0 +1,208 @@
+#!/bin/bash
+
+
+#######################################
+# FUNCTIONS
+#######################################
+
+# Run an Artisan command
+artisan () {
+    docker-compose -f "docker-compose-${@:1}.yml" run --rm backend php artisan "${@:2}"
+}
+
+# Build all of the images or the specified one
+build () {
+    docker-compose -f "docker-compose-${@:1}.yml" build "${@:2}"
+}
+
+# Generate a new certificate
+cert_generate () {
+    rm -Rf .docker/nginx/certs/mvp.test.*
+    docker-compose -f "docker-compose-${@:1}.yml" run --rm nginx sh -c "cd /etc/nginx/certs && touch openssl.cnf && cat /etc/ssl/openssl.cnf > openssl.cnf && echo \"\" >> openssl.cnf && echo \"[ SAN ]\" >> openssl.cnf && echo \"subjectAltName=DNS.1:mvp.test,DNS.2:*.mvp.test\" >> openssl.cnf && openssl req -x509 -sha256 -nodes -newkey rsa:4096 -keyout mvp.test.key -out mvp.test.crt -days 3650 -subj \"/CN=*.mvp.test\" -config openssl.cnf -extensions SAN && rm openssl.cnf"
+}
+
+# Install the certificate
+cert_install () {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain .docker/nginx/certs/mvp.test.crt
+    elif [[ "$OSTYPE" == "linux-gnu" ]]; then
+        sudo ln -s "$(pwd)/.docker/nginx/certs/mvp.test.crt" /usr/local/share/ca-certificates/mvp.test.crt
+        sudo update-ca-certificates
+    else
+        echo "Could not install the certificate on the host machine, please do it manually"
+    fi
+
+    docker-compose -f "docker-compose-${@:1}.yml" exec backend update-ca-certificates
+}
+
+# Run a Composer command
+composer () {
+    docker-compose -f "docker-compose-${@:1}.yml" run --rm backend composer "${@:2}"
+}
+
+# Remove the entire Docker environment
+destroy () {
+    read -p "This will delete containers, volumes and images. Are you sure? [y/N]: " -r
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then exit; fi
+    docker-compose -f "docker-compose-${@:1}.yml" down -v --rmi all --remove-orphans
+}
+
+# Stop and destroy all containers
+down () {
+    docker-compose -f "docker-compose-${@:1}.yml" down "${@:2}"
+}
+
+# Create .env from .env.example
+env () {
+    if [ ! -f .env ]; then
+        cp .env.example .env
+    fi
+}
+
+# Initialise the Docker environment and the application
+init () {
+    env \
+        && down -v \
+        && build \
+        && docker-compose -f "docker-compose-${@:1}.yml" run --rm --entrypoint="//opt/files/init" backend \
+        && yarn install
+
+    if [ ! -f .docker/nginx/certs/mvp.test.crt ]; then
+        cert_generate
+    fi
+
+    start && cert_install
+}
+
+# Display and tail the logs of all containers or the specified one's
+logs () {
+    docker-compose -f "docker-compose-${@:1}.yml" logs -f "${@:2}"
+}
+
+# Restart the containers
+restart () {
+    stop && start
+}
+
+# Start the containers
+start () {
+    docker-compose -f "docker-compose-${@:1}.yml" up -d
+}
+
+# Stop the containers
+stop () {
+    docker-compose -f "docker-compose-${@:1}.yml" stop
+}
+
+# Update the Docker environment
+update () {
+    git pull \
+        && build \
+        && composer install \
+        && artisan migrate \
+        && yarn install \
+        && start
+}
+
+# Run a Yarn command
+yarn () {
+    docker-compose -f "docker-compose-${@:1}.yml" run --rm frontend yarn "${@:2}"
+}
+
+
+#######################################
+# MENU
+#######################################
+
+case "$2" in
+    artisan)
+        artisan "${@:1}" "${@:3}"
+        ;;
+    build)
+        build "${@:1}" "${@:3}"
+        ;;
+    cert)
+        case "$3" in
+            generate)
+                cert_generate "${@:1}"
+                ;;
+            install)
+                cert_install "${@:1}"
+                ;;
+            *)
+                cat << EOF
+
+Certificate management commands.
+
+Usage:
+    mvp cert <command>
+
+Available commands:
+    generate .................................. Generate a new certificate
+    install ................................... Install the certificate
+
+EOF
+                ;;
+        esac
+        ;;
+    composer)
+        composer "${@:1}" "${@:3}"
+        ;;
+    destroy)
+        destroy "${@:1}"
+        ;;
+    down)
+        down "${@:1}" "${@:3}"
+        ;;
+    init)
+        init "${@:1}"
+        ;;
+    logs)
+        logs "${@:3}"
+        ;;
+    restart)
+        restart "${@:1}"
+        ;;
+    start)
+        start "${@:1}"
+        ;;
+    stop)
+        stop "${@:1}"
+        ;;
+    update)
+        update "${@:1}"
+        ;;
+    yarn)
+        yarn "${@:1}" "${@:3}"
+        ;;
+    *)
+        cat << EOF
+
+Command line interface for the Docker-based web development environment mvp.
+
+Usage:
+    mvp <command> [options] [arguments]
+
+Available commands:
+    artisan ................................... Run an Artisan command
+    build [image] ............................. Build all of the images or the specified one
+    cert ...................................... Certificate management commands
+        generate .............................. Generate a new certificate
+        install ............................... Install the certificate
+    composer .................................. Run a Composer command
+    destroy ................................... Remove the entire Docker environment
+    down [-v] ................................. Stop and destroy all containers
+                                                Options:
+                                                    -v .................... Destroy the volumes as well
+    init ...................................... Initialise the Docker environment and the application
+    logs [container] .......................... Display and tail the logs of all containers or the specified one's
+    restart ................................... Restart the containers
+    start ..................................... Start the containers
+    stop ...................................... Stop the containers
+    update .................................... Update the Docker environment
+    yarn ...................................... Run a Yarn command
+
+EOF
+        exit
+        ;;
+esac

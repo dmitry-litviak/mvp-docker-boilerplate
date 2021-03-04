@@ -1,0 +1,117 @@
+version: '3.8'
+
+# Services
+services:
+
+  # Nginx Service
+  nginx:
+    build: ./.docker/nginx
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      default:
+        aliases:
+          - frontend.<name_of_project>.test
+    volumes:
+      - ./src/backend:/var/www/backend
+      - ./.docker/nginx/conf.d:/etc/nginx/conf.d
+      # - phpmyadmindata:/var/www/phpmyadmin
+      - ./.docker/nginx/certs:/etc/nginx/certs
+    depends_on:
+      - backend
+      - frontend
+      # - phpmyadmin
+
+  # Backend Service
+  backend:
+    build:
+      context: ./src/backend
+      target: backend
+    working_dir: /var/www/backend
+    volumes:
+      - ./src/backend:/var/www/backend
+      - ./.docker/backend/init-laravel:/opt/files/init
+      - ./.docker/nginx/certs:/usr/local/share/ca-certificates
+    depends_on:
+      - mysql
+      - redis
+
+  # Worker Service
+  worker:
+    build:
+      context: ./src/backend
+      target: worker
+    working_dir: /var/www/backend
+    volumes:
+      - ./src/backend:/var/www/backend
+    depends_on:
+      - backend
+
+  # Frontend Service
+  frontend:
+    build: ./src/frontend
+    working_dir: /var/www/frontend
+    volumes:
+      - ./src/frontend:/var/www/frontend
+    depends_on:
+      - backend
+
+  # MySQL Service
+  mysql:
+    image: mysql:8
+    ports:
+      - 33060:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE:  ${DB_NAME}
+    volumes:
+      - ./.docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+      - mysqldata:/var/lib/mysql
+
+  # PhpMyAdmin Service
+  # phpmyadmin:
+  #   image: phpmyadmin/phpmyadmin:5-fpm-alpine
+  #   environment:
+  #     PMA_HOST: mysql
+  #   volumes:
+  #     - phpmyadmindata:/var/www/html
+  #   depends_on:
+  #     - mysql
+
+  # Ngrok Service
+  ngrok:
+    image: wernight/ngrok:latest
+    ports:
+      - 4040:4040
+    environment:
+      NGROK_PROTOCOL: http
+      NGROK_PORT: nginx:443
+      NGROK_AUTH: ${NGROK_AUTH}
+    depends_on:
+      - nginx
+
+  # Redis Service
+  redis:
+    image: redis:6-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+
+  # Scheduler Service
+  scheduler:
+    image: mcuadros/ofelia:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./.docker/scheduler/config-laravel.ini:/etc/ofelia/config.ini
+    depends_on:
+      - backend
+
+# Volumes
+volumes:
+
+  mysqldata:
+
+  # phpmyadmindata:
+
+  redisdata:
