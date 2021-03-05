@@ -48,7 +48,24 @@ Add the following domains to your machine's `hosts` file:
 Clone the repository:
 
 ```
-$ git clone git@github.com:osteel/docker-tutorial.git <name_of_project> && cd <name_of_project>
+$ git clone git@github.com:dmitry-litviak/mvp-docker-boilerplate.git <name_of_project> && cd <name_of_project>
+```
+
+Remove .git folder to avoid errors
+```
+$ rm -rf .git
+```
+
+Run replacement command, that will replace all `<name_of_project>` in the project to your project name. Replace `<your_new_name>` in command with the name of your project.
+
+OS X:
+```
+$ LC_ALL=C find ./ -type f -exec sed -i '' -e 's/<name_of_project>/<your_new_name>/g' {} \;
+```
+
+Linux:
+```
+$ find ./ -type f -exec sed -i 's/<name_of_project>/<your_new_name>/g' {} \;
 ```
 
 For simplicity you can add the following function to your Bash start-up file (`.bashrc`, `.zshrc`...):
