@@ -5,20 +5,38 @@
 # FUNCTIONS
 #######################################
 
+# Install Laravel backend
+install_laravel_backend() {
+    composer create-project --prefer-dist laravel/laravel tmp
+    docker-compose -f "docker-compose-$1.yml" run --rm backend sh -c "mv -n tmp/.* ./ && mv tmp/* ./ && rm -Rf tmp"
+}
+
+# Install Vue frontend
+install_vue_frontend() {
+    docker-compose -f "docker-compose-$1.yml" run --rm frontend sh -c "yarn global add @vue/cli && vue create tmp --default --force"
+    docker-compose -f "docker-compose-$1.yml" run --rm frontend sh -c "mv -n tmp/.* ./ && mv tmp/* ./ && rm -Rf tmp"
+}
+
+# Install Nuxt frontend
+install_nuxt_frontend() {
+    docker-compose -f "docker-compose-$1.yml" run --rm frontend sh -c "yarn create nuxt-app tmp"
+    docker-compose -f "docker-compose-$1.yml" run --rm frontend sh -c "mv -n tmp/.* ./ && mv tmp/* ./ && rm -Rf tmp"
+}
+
 # Run an Artisan command
 artisan () {
-    docker-compose -f "docker-compose-${@:1}.yml" run --rm backend php artisan "${@:2}"
+    docker-compose -f "docker-compose-$1.yml" run --rm backend php artisan "${@:2}"
 }
 
 # Build all of the images or the specified one
 build () {
-    docker-compose -f "docker-compose-${@:1}.yml" build "${@:2}"
+    docker-compose -f "docker-compose-$1.yml" build "${@:2}"
 }
 
 # Generate a new certificate
 cert_generate () {
     rm -Rf .docker/nginx/certs/mvp.test.*
-    docker-compose -f "docker-compose-${@:1}.yml" run --rm nginx sh -c "cd /etc/nginx/certs && touch openssl.cnf && cat /etc/ssl/openssl.cnf > openssl.cnf && echo \"\" >> openssl.cnf && echo \"[ SAN ]\" >> openssl.cnf && echo \"subjectAltName=DNS.1:mvp.test,DNS.2:*.mvp.test\" >> openssl.cnf && openssl req -x509 -sha256 -nodes -newkey rsa:4096 -keyout mvp.test.key -out mvp.test.crt -days 3650 -subj \"/CN=*.mvp.test\" -config openssl.cnf -extensions SAN && rm openssl.cnf"
+    docker-compose -f "docker-compose-$1.yml" run --rm nginx sh -c "cd /etc/nginx/certs && touch openssl.cnf && cat /etc/ssl/openssl.cnf > openssl.cnf && echo \"\" >> openssl.cnf && echo \"[ SAN ]\" >> openssl.cnf && echo \"subjectAltName=DNS.1:mvp.test,DNS.2:*.mvp.test\" >> openssl.cnf && openssl req -x509 -sha256 -nodes -newkey rsa:4096 -keyout mvp.test.key -out mvp.test.crt -days 3650 -subj \"/CN=*.mvp.test\" -config openssl.cnf -extensions SAN && rm openssl.cnf"
 }
 
 # Install the certificate
@@ -32,24 +50,24 @@ cert_install () {
         echo "Could not install the certificate on the host machine, please do it manually"
     fi
 
-    docker-compose -f "docker-compose-${@:1}.yml" exec backend update-ca-certificates
+    docker-compose -f "docker-compose-$1.yml" exec backend update-ca-certificates
 }
 
 # Run a Composer command
 composer () {
-    docker-compose -f "docker-compose-${@:1}.yml" run --rm backend composer "${@:2}"
+    docker-compose -f "docker-compose-$1.yml" run --rm backend composer "${@:2}"
 }
 
 # Remove the entire Docker environment
 destroy () {
     read -p "This will delete containers, volumes and images. Are you sure? [y/N]: " -r
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then exit; fi
-    docker-compose -f "docker-compose-${@:1}.yml" down -v --rmi all --remove-orphans
+    docker-compose -f "docker-compose-$1.yml" down -v --rmi all --remove-orphans
 }
 
 # Stop and destroy all containers
 down () {
-    docker-compose -f "docker-compose-${@:1}.yml" down "${@:2}"
+    docker-compose -f "docker-compose-$1.yml" down "${@:2}"
 }
 
 # Create .env from .env.example
@@ -62,10 +80,10 @@ env () {
 # Initialise the Docker environment and the application
 init () {
     env \
-        && down -v \
-        && build \
-        && docker-compose -f "docker-compose-${@:1}.yml" run --rm --entrypoint="//opt/files/init" backend \
-        && yarn install
+        && down "$1" -v \
+        && build "$1" \
+        && docker-compose -f "docker-compose-$1.yml" run --rm --entrypoint="//opt/files/init" backend \
+        && yarn "$1" install
 
     if [ ! -f .docker/nginx/certs/mvp.test.crt ]; then
         cert_generate
@@ -76,37 +94,37 @@ init () {
 
 # Display and tail the logs of all containers or the specified one's
 logs () {
-    docker-compose -f "docker-compose-${@:1}.yml" logs -f "${@:2}"
+    docker-compose -f "docker-compose-$1.yml" logs -f "${@:2}"
 }
 
 # Restart the containers
 restart () {
-    stop && start
+    stop "$1" && start "$1"
 }
 
 # Start the containers
 start () {
-    docker-compose -f "docker-compose-${@:1}.yml" up -d
+    docker-compose -f "docker-compose-$1.yml" up -d
 }
 
 # Stop the containers
 stop () {
-    docker-compose -f "docker-compose-${@:1}.yml" stop
+    docker-compose -f "docker-compose-$1.yml" stop
 }
 
 # Update the Docker environment
 update () {
     git pull \
-        && build \
-        && composer install \
-        && artisan migrate \
-        && yarn install \
-        && start
+        && build "$1" \
+        && composer "$1" install \
+        && artisan "$1" migrate \
+        && yarn "$1" install \
+        && start "$1"
 }
 
 # Run a Yarn command
 yarn () {
-    docker-compose -f "docker-compose-${@:1}.yml" run --rm frontend yarn "${@:2}"
+    docker-compose -f "docker-compose-$1.yml" run --rm frontend yarn "${@:2}"
 }
 
 
@@ -115,19 +133,28 @@ yarn () {
 #######################################
 
 case "$2" in
+    install_laravel_backend)
+        install_laravel_backend "$1"
+        ;;
+    install_vue_frontend)
+        install_vue_frontend "$1"
+        ;;
+    install_nuxt_frontend)
+        install_nuxt_frontend "$1"
+        ;;        
     artisan)
-        artisan "${@:1}" "${@:3}"
+        artisan "$1" "${@:3}"
         ;;
     build)
-        build "${@:1}" "${@:3}"
+        build "$1" "${@:3}"
         ;;
     cert)
         case "$3" in
             generate)
-                cert_generate "${@:1}"
+                cert_generate "$1"
                 ;;
             install)
-                cert_install "${@:1}"
+                cert_install "$1"
                 ;;
             *)
                 cat << EOF
@@ -146,34 +173,34 @@ EOF
         esac
         ;;
     composer)
-        composer "${@:1}" "${@:3}"
+        composer "$1" "${@:3}"
         ;;
     destroy)
-        destroy "${@:1}"
+        destroy "$1"
         ;;
     down)
-        down "${@:1}" "${@:3}"
+        down "$1" "${@:3}"
         ;;
     init)
-        init "${@:1}"
+        init "$1"
         ;;
     logs)
         logs "${@:3}"
         ;;
     restart)
-        restart "${@:1}"
+        restart "$1"
         ;;
     start)
-        start "${@:1}"
+        start "$1"
         ;;
     stop)
-        stop "${@:1}"
+        stop "$1"
         ;;
     update)
-        update "${@:1}"
+        update "$1"
         ;;
     yarn)
-        yarn "${@:1}" "${@:3}"
+        yarn "$1" "${@:3}"
         ;;
     *)
         cat << EOF
@@ -184,6 +211,9 @@ Usage:
     mvp <command> [options] [arguments]
 
 Available commands:
+    install_laravel_backend.................... Install Laravel to the backend folder
+    install_vue_frontend....................... Install Vue.js to the frontend folder
+    install_nuxt_frontend...................... Install Nuxt.js to the frontend folder
     artisan ................................... Run an Artisan command
     build [image] ............................. Build all of the images or the specified one
     cert ...................................... Certificate management commands
