@@ -35,16 +35,16 @@ build () {
 
 # Generate a new certificate
 cert_generate () {
-    rm -Rf .docker/nginx/certs/mvp.test.*
-    docker-compose -f "docker-compose-$1.yml" run --rm nginx sh -c "cd /etc/nginx/certs && touch openssl.cnf && cat /etc/ssl/openssl.cnf > openssl.cnf && echo \"\" >> openssl.cnf && echo \"[ SAN ]\" >> openssl.cnf && echo \"subjectAltName=DNS.1:mvp.test,DNS.2:*.mvp.test\" >> openssl.cnf && openssl req -x509 -sha256 -nodes -newkey rsa:4096 -keyout mvp.test.key -out mvp.test.crt -days 3650 -subj \"/CN=*.mvp.test\" -config openssl.cnf -extensions SAN && rm openssl.cnf"
+    rm -Rf .docker/nginx/certs/<name_of_project>.test.*
+    docker-compose -f "docker-compose-$1.yml" run --rm nginx sh -c "cd /etc/nginx/certs && touch openssl.cnf && cat /etc/ssl/openssl.cnf > openssl.cnf && echo \"\" >> openssl.cnf && echo \"[ SAN ]\" >> openssl.cnf && echo \"subjectAltName=DNS.1:<name_of_project>.test,DNS.2:*.<name_of_project>.test\" >> openssl.cnf && openssl req -x509 -sha256 -nodes -newkey rsa:4096 -keyout <name_of_project>.test.key -out <name_of_project>.test.crt -days 3650 -subj \"/CN=*.<name_of_project>.test\" -config openssl.cnf -extensions SAN && rm openssl.cnf"
 }
 
 # Install the certificate
 cert_install () {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain .docker/nginx/certs/mvp.test.crt
+        sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain .docker/nginx/certs/<name_of_project>.test.crt
     elif [[ "$OSTYPE" == "linux-gnu" ]]; then
-        sudo ln -s "$(pwd)/.docker/nginx/certs/mvp.test.crt" /usr/local/share/ca-certificates/mvp.test.crt
+        sudo ln -s "$(pwd)/.docker/nginx/certs/<name_of_project>.test.crt" /usr/local/share/ca-certificates/<name_of_project>.test.crt
         sudo update-ca-certificates
     else
         echo "Could not install the certificate on the host machine, please do it manually"
@@ -85,11 +85,11 @@ init () {
         && docker-compose -f "docker-compose-$1.yml" run --rm --entrypoint="//opt/files/init" backend \
         && yarn "$1" install
 
-    if [ ! -f .docker/nginx/certs/mvp.test.crt ]; then
-        cert_generate
+    if [ ! -f .docker/nginx/certs/<name_of_project>.test.crt ]; then
+        cert_generate "$1"
     fi
 
-    start && cert_install
+    start "$1" && cert_install "$1"
 }
 
 # Display and tail the logs of all containers or the specified one's
@@ -185,7 +185,7 @@ EOF
         init "$1"
         ;;
     logs)
-        logs "${@:3}"
+        logs "$1" "${@:3}"
         ;;
     restart)
         restart "$1"
